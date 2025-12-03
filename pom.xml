@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.dataops.platform</groupId>
+    <artifactId>dataops-backend-platform</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>DataOps Backend Platform – Parent</name>
+
+    <modules>
+        <module>module-00-common-models</module>
+        <module>module-01-core</module>
+        <module>module-02-in-memory-engine</module>
+        <module>module-03-persistence</module>
+        <module>module-04-file-storage</module>
+        <module>module-05-analytics</module>
+        <module>module-06-streaming-kafka</module>
+        <module>module-07-api</module>
+        <module>module-08-aop-logging</module>
+        <module>common-test</module>
+        <module>dataops-platform-monolith</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <spring-boot.version>3.3.4</spring-boot.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>17</release>
+                        <compilerArgs>
+                            <arg>-parameters</arg>
+                        </compilerArgs>
+
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.0</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
+

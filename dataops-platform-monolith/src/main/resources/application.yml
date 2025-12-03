@@ -1,0 +1,40 @@
+server:
+  port: 8080
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+    kafka:
+      bootstrap-servers: localhost:9092
+      producer:
+        key-serializer: org.apache.kafka.common.serialization.StringSerializer
+        value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+        acks: 1
+
+  autoconfigure:
+    exclude: org.redisson.spring.starter.RedissonAutoConfigurationV2
+
+  datasource:
+    url: jdbc:h2:file:./data/dataops;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+app:
+  kafka:
+    enabled: false

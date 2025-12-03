@@ -1,0 +1,52 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (Java 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Verify Maven Wrapper
+        run: |
+          ./mvnw --version
+
+      - name: Build & run unit tests (skip integration for speed)
+        run: |
+          ./mvnw clean install -DskipTests=false -Dmaven.test.failure.ignore=false
+
+      - name: Run JMH benchmarks (module-05-analytics)
+        if: success()
+        run: |
+          cd module-05-analytics
+          ../mvnw clean package -DskipTests
+          java -jar target/benchmarks.jar -wi 5 -i 10 -f 1
+
+      - name: Upload artifact (fat JAR)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataops-platform-monolith
+          path: dataops-platform-monolith/target/dataops-platform-monolith-0.0.1-SNAPSHOT.jar
+          retention-days: 7
+
+      - name: Success notification
+        if: success()
+        run: |
+          echo "✅ Build succeeded! Ready for production."
