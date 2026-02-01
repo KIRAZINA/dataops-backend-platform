@@ -39,8 +39,8 @@ class SimpleInMemoryIndexTest {
         t1.join();
         t2.join();
 
-        // 2 потока × 1000 записей = 2000 записей
-        // 10 разных ключей → по 200 записей на каждый ключ
+        // 2 threads × 1000 records = 2000 records
+        // 10 different keys → 200 records for each key
         for (int i = 0; i < 10; i++) {
             assertEquals(200, index.get("key" + i).size());
         }

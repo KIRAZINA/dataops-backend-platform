@@ -31,8 +31,8 @@ public class PersistedRecord {
     @Column(name = "ingested_at", nullable = false)
     private LocalDateTime ingestedAt;
 
-    @Column(columnDefinition = "JSON", nullable = false)
-    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "CLOB NOT NULL", nullable = false)
+    @JdbcTypeCode(SqlTypes.CLOB)
     private Map<String, Object> payload;
 
     @Column(name = "created_at", updatable = false)

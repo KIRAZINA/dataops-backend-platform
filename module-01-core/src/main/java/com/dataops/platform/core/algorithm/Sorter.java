@@ -64,7 +64,7 @@ public final class Sorter {
         int mid = low + (high - low) / 2;
         mergeSort(a, aux, low, mid, c);
         mergeSort(a, aux, mid + 1, high, c);
-        if (c.compare(a[mid], a[mid + 1]) <= 0) return; // уже отсортировано
+        if (c.compare(a[mid], a[mid + 1]) <= 0) return; // already sorted
         merge(a, aux, low, mid, high, c);
     }
 

@@ -11,7 +11,7 @@ class DynamicArrayTest {
         DynamicArray<String> arr = new DynamicArray<>(2);
         arr.add("A");
         arr.add("B");
-        arr.add("C"); // было "C("C"
+        arr.add("C"); // was "C("C"
         assertEquals(3, arr.size());
         assertEquals("A", arr.get(0));
         assertEquals("B", arr.get(1));

@@ -23,6 +23,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+        hbm2ddl:
+          # Disable column type validation
+          validate: false
     show-sql: false
     open-in-view: false
 
