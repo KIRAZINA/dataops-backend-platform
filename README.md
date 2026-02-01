@@ -1,4 +1,3 @@
-```markdown
 # DataOps Backend Platform
 
 ![Java 17](https://img.shields.io/badge/Java-17-blue.svg)
