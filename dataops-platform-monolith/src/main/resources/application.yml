@@ -4,12 +4,12 @@ server:
 spring:
   main:
     allow-bean-definition-overriding: true
-    kafka:
-      bootstrap-servers: localhost:9092
-      producer:
-        key-serializer: org.apache.kafka.common.serialization.StringSerializer
-        value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-        acks: 1
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: 1
 
   autoconfigure:
     exclude: org.redisson.spring.starter.RedissonAutoConfigurationV2
@@ -28,7 +28,6 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
         format_sql: true
         hbm2ddl:
-          # Disable column type validation
           validate: false
     show-sql: false
     open-in-view: false
@@ -45,3 +44,6 @@ management:
 app:
   kafka:
     enabled: false
+  api:
+    cors:
+      allowed-origins: "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"

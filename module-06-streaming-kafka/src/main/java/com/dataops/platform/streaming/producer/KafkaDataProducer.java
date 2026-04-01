@@ -1,4 +1,3 @@
-// src/main/java/com/dataops/platform/streaming/producer/KafkaDataProducer.java
 package com.dataops.platform.streaming.producer;
 
 import com.dataops.platform.common.model.DataRecord;
@@ -12,16 +11,17 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 @ConditionalOnProperty(name = "app.kafka.enabled", havingValue = "true", matchIfMissing = false)
-public class KafkaDataProducer {
+public class KafkaDataProducer implements KafkaProducer {
 
     private final KafkaTemplate<String, DataRecord> kafkaTemplate;
 
+    @Override
     public void publish(String topic, DataRecord record) {
         try {
             kafkaTemplate.send(topic, record.getKey(), record)
                     .whenComplete((result, ex) -> {
                         if (ex == null) {
-                            log.info("Published to Kafka → topic={}, key={}, offset={}",
+                            log.info("Published to Kafka -> topic={}, key={}, offset={}",
                                     topic, record.getKey(), result.getRecordMetadata().offset());
                         } else {
                             log.warn("Failed to publish to Kafka: {}", ex.getMessage());

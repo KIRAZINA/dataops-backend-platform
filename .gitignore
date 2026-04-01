@@ -1,70 +1,59 @@
-# === Java / Maven ===
+# Build outputs
 target/
-!.mvn/wrappers/maven-wrapper.jar
+out/
+build/
+*.class
+
+# Maven / Gradle metadata backups
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 pom.xml.next
-*.iml
-*.iws
-*.ipr
-*.log
 
-# === IDE ===
+# Keep Maven Wrapper in VCS
+!.mvn/
+!.mvn/wrapper/
+!.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+!mvnw
+!mvnw.cmd
+
+# IDE files
 .idea/
-*.iml
-*.iws
-*.ipr
-*.idea
 .vscode/
+*.iml
+*.ipr
+*.iws
 .classpath
 .project
 .settings/
-*.swp
-*~
 
-# === Spring Boot ===
-.application.properties
-.application.yml
-!.mvn/
-!.gradle/
-!/gradle/wrapper/gradle-wrapper.jar
-!/gradlew
-!/gradlew.bat
+# Logs
+logs/
+*.log
 
-# === H2 Database ===
+# Local databases and runtime state
 data/
 *.db
 *.mv.db
 *.trace.db
 *.lock.db
 
-# === Logs ===
-logs/
-*.log
-
-# === Exports / Temp files (твоя папка з бекапами) ===
-module-04-file-storage/exports/
+# Temporary exports and scratch files
 exports/
+module-04-file-storage/exports/
 temp/
 tmp/
 
-# === OS ===
-.DS_Store
-Thumbs.db
-
-# === Maven Wrapper (якщо використовуєш) ===
-!/.mvn/wrapper/maven-wrapper.jar
-!/.mvn/wrapper/maven-wrapper.properties
-
-# === Gradle Wrapper (на всяк випадок) ===
-!/gradlew
-!/gradlew.bat
-!/gradle/wrapper/gradle-wrapper.properties
-
-# === Local environment files ===
+# Environment-specific files
 .env
 .env.local
 application-local.yml
 application-dev.yml
 application-prod.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~

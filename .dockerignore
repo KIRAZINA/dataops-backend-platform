@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+.mvn/wrapper/maven-wrapper.jar
+**/target
+data
+*.log
+README.md
+LICENSE
+run.bat
+run.sh

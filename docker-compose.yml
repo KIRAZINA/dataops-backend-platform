@@ -1,0 +1,17 @@
+services:
+  dataops-monolith:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dataops-monolith
+    ports:
+      - "8080:8080"
+    environment:
+      APP_KAFKA_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/dataops
+    volumes:
+      - dataops-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  dataops-data:

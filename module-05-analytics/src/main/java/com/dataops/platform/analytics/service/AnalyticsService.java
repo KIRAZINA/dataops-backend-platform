@@ -4,7 +4,6 @@ import com.dataops.platform.common.model.DataRecord;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -18,7 +17,6 @@ public class AnalyticsService {
     private final AggregationEngine engine;
     private final MeterRegistry meterRegistry;
 
-    @Cacheable(value = "stats", key = "#source")
     public Map<String, Object> getStats(List<DataRecord> records, String source) {
         Map<String, Object> stats = new HashMap<>();
         stats.put("count", records.size());
@@ -43,7 +41,6 @@ public class AnalyticsService {
         return stats;
     }
 
-    @Cacheable(value = "sorted", key = "#source + '_' + #sortType")
     public List<DataRecord> getSortedData(List<DataRecord> records, String source, String sortType) {
         Timer timer = meterRegistry.timer("analytics.sort.time", "algorithm", sortType);
         return timer.record(() -> engine.sortByPayloadValue(records, sortType));

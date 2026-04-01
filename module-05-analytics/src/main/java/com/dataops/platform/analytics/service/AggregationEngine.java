@@ -4,7 +4,11 @@ import com.dataops.platform.common.model.DataRecord;
 import com.dataops.platform.core.algorithm.Sorter;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,7 +43,7 @@ public class AggregationEngine {
     }
 
     public List<DataRecord> sortByPayloadValue(List<DataRecord> records, String sortType) {
-        List<DataRecord> sorted = new ArrayList<>(records);
+        DataRecord[] sortedArray = records.toArray(new DataRecord[0]);
 
         Comparator<DataRecord> comparator = Comparator.comparingDouble(r -> {
             Object value = r.getPayload().getOrDefault("value", 0);
@@ -47,12 +51,12 @@ public class AggregationEngine {
         });
 
         switch (sortType.toLowerCase()) {
-            case "quicksort" -> Sorter.quickSort(sorted.toArray(new DataRecord[0]), comparator);
-            case "mergesort" -> Sorter.mergeSort(sorted.toArray(new DataRecord[0]), comparator);
-            case "heapsort" -> Sorter.heapSort(sorted.toArray(new DataRecord[0]), comparator);
-            default -> sorted.sort(comparator);
+            case "quicksort" -> Sorter.quickSort(sortedArray, comparator);
+            case "mergesort" -> Sorter.mergeSort(sortedArray, comparator);
+            case "heapsort" -> Sorter.heapSort(sortedArray, comparator);
+            default -> Arrays.sort(sortedArray, comparator);
         }
 
-        return sorted;
+        return new ArrayList<>(Arrays.asList(sortedArray));
     }
 }

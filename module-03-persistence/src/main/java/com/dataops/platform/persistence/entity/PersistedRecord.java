@@ -1,10 +1,22 @@
 package com.dataops.platform.persistence.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import com.dataops.platform.persistence.converter.MapToJsonConverter;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -15,7 +27,11 @@ import java.util.Map;
                 @Index(name = "idx_type", columnList = "type"),
                 @Index(name = "idx_ingested_at", columnList = "ingested_at")
         })
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class PersistedRecord {
 
     @Id
@@ -31,8 +47,9 @@ public class PersistedRecord {
     @Column(name = "ingested_at", nullable = false)
     private LocalDateTime ingestedAt;
 
+    @Lob
+    @Convert(converter = MapToJsonConverter.class)
     @Column(columnDefinition = "CLOB NOT NULL", nullable = false)
-    @JdbcTypeCode(SqlTypes.CLOB)
     private Map<String, Object> payload;
 
     @Column(name = "created_at", updatable = false)
