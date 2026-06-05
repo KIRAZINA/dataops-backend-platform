@@ -39,11 +39,19 @@ data/
 *.trace.db
 *.lock.db
 
+# Temporary task files
+Task.md
+task.md
+
 # Temporary exports and scratch files
 exports/
 module-04-file-storage/exports/
 temp/
 tmp/
+Task.md
+
+# Local IDE / tooling directories
+.github/modernize/
 
 # Environment-specific files
 .env

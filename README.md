@@ -14,6 +14,8 @@ Production-ready multi-module Spring Boot monolith for data ingestion, storage, 
 - Exposes paginated record browsing and analytics endpoints
 - Exports data as JSON and CSV
 - Ships with Swagger/OpenAPI, actuator health, Prometheus metrics, and Docker support
+- Includes Apache Kafka integration for event streaming (disabled by default)
+- Provides AOP-based logging for operational monitoring
 
 ## Stack
 
@@ -25,6 +27,8 @@ Production-ready multi-module Spring Boot monolith for data ingestion, storage, 
 - springdoc OpenAPI
 - Micrometer + Actuator + Prometheus
 - Docker
+- Apache Kafka
+- Aspect-Oriented Programming (AOP)
 
 ## Quick Start
 
@@ -124,9 +128,10 @@ dataops-backend-platform
 
 ## Notes
 
-- Kafka is disabled by default and falls back to a no-op producer
+- Kafka is disabled by default and falls back to a no-op producer (enable via application.yml)
 - The default database is file-backed H2
 - Binary export is currently a placeholder endpoint
+- Recent architectural improvements include persistence consolidation and enhanced error handling
 
 ## License
 
