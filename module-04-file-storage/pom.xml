@@ -16,7 +16,7 @@
     <dependencies>
         <dependency>
             <groupId>com.dataops.platform</groupId>
-            <artifactId>module-02-in-memory-engine</artifactId>
+            <artifactId>module-00-common-models</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>
@@ -29,13 +29,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <!-- Redisson  -->
-        <dependency>
-            <groupId>org.redisson</groupId>
-            <artifactId>redisson-spring-boot-starter</artifactId>
-            <version>3.34.0</version>
         </dependency>
 
         <!-- Jackson JSON -->

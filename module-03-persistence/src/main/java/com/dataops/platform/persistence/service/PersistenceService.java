@@ -1,7 +1,6 @@
 package com.dataops.platform.persistence.service;
 
 import com.dataops.platform.persistence.entity.PersistedRecord;
-import com.dataops.platform.persistence.repository.jdbc.JdbcRecordRepository;
 import com.dataops.platform.persistence.repository.jpa.JpaRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,14 +15,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PersistenceService {
 
-    private final JdbcRecordRepository jdbcRepo;
     private final JpaRecordRepository jpaRepo;
-
-    @Transactional
-    public PersistedRecord saveViaJdbc(String source, String type, Map<String, Object> payload) {
-        PersistedRecord record = buildRecord(source, type, payload);
-        return jdbcRepo.save(record);
-    }
 
     @Transactional
     public PersistedRecord saveViaJpa(String source, String type, Map<String, Object> payload) {
@@ -38,6 +30,11 @@ public class PersistenceService {
             persistedRecords.add(jpaRepo.save(buildRecord(source, type, payload)));
         }
         return persistedRecords;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PersistedRecord> findAll() {
+        return jpaRepo.findAll();
     }
 
     @Transactional(readOnly = true)

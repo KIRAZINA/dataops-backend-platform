@@ -16,7 +16,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <start-class>com.dataops.platform.monolith.DataOpsMonolithApplication</start-class>
+        <start-class>com.dataops.platform.DataOpsMonolithApplication</start-class>
     </properties>
 
     <dependencies>
@@ -70,23 +70,16 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.lettuce</groupId>
-                    <artifactId>lettuce-core</artifactId>
-                </exclusion>
-            </exclusions>
+            <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.redisson</groupId>
-            <artifactId>redisson-spring-boot-starter</artifactId>
-            <version>3.34.0</version>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
-
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
         <dependency>
@@ -107,7 +100,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>3.3.4</version>
                 <configuration>
-                    <mainClass>com.dataops.platform.monolith.DataOpsMonolithApplication</mainClass>
+                    <mainClass>com.dataops.platform.DataOpsMonolithApplication</mainClass>
                     <layout>ZIP</layout>
                 </configuration>
                 <executions>

@@ -2,8 +2,6 @@ package com.dataops.platform.inmemory.service;
 
 import com.dataops.platform.common.event.DataRecordIngestedEvent;
 import com.dataops.platform.common.model.DataRecord;
-import com.dataops.platform.core.collection.DynamicArray;
-import com.dataops.platform.core.collection.SimpleInMemoryIndex;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -13,99 +11,64 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * In-memory storage service for managing data records.
- * Provides O(1) lookups via custom indexes and supports pagination.
- * All write operations are transactional.
+ * Uses built-in concurrent collections to provide thread-safe cache semantics.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class InMemoryStorageService {
 
-    private final DynamicArray<DataRecord> storage = new DynamicArray<>(1024);
-    private final SimpleInMemoryIndex sourceIndex = new SimpleInMemoryIndex();
-    private final SimpleInMemoryIndex typeIndex = new SimpleInMemoryIndex();
-    private final Map<String, DataRecord> idIndex = new HashMap<>();
+    private final CopyOnWriteArrayList<DataRecord> records = new CopyOnWriteArrayList<>();
+    private final ConcurrentMap<String, CopyOnWriteArrayList<DataRecord>> sourceIndex = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CopyOnWriteArrayList<DataRecord>> typeIndex = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, DataRecord> idIndex = new ConcurrentHashMap<>();
 
     private final ApplicationEventPublisher eventPublisher;
 
     private long sequence = 1L;
 
-    /**
-     * Save a single record with transaction support.
-     * Publishes DataRecordIngestedEvent upon successful save.
-     *
-     * @param source the source of the record
-     * @param type the type of the record
-     * @param payload the record payload
-     * @return the saved record with generated ID
-     */
     @Transactional
-    public synchronized DataRecord save(String source, String type, Map<String, Object> payload) {
+    public DataRecord save(String source, String type, Map<String, Object> payload) {
         log.debug("Saving new record with source: {}, type: {}", source, type);
-        DataRecord record = DataRecord.builder()
-                .key(String.valueOf(sequence++))
-                .source(source)
-                .type(type)
-                .payload(Map.copyOf(payload))
-                .timestamp(Instant.now())
-                .build();
-
-        long position = storage.size();
-        storage.add(record);
-
-        sourceIndex.add(source, position);
-        typeIndex.add(type, position);
-        idIndex.put(record.id(), record);
-
-        eventPublisher.publishEvent(new DataRecordIngestedEvent(this, record));
-        log.info("Saved record with ID: {} and key: {}", record.id(), record.getKey());
-
+        DataRecord record = buildRecord(source, type, payload);
+        addRecord(record);
         return record;
     }
 
-    /**
-     * Save a batch of records with transaction support.
-     * All-or-nothing semantics: either all records are saved or transaction rolls back.
-     *
-     * @param source the source of all records
-     * @param type the type of all records
-     * @param payloads list of record payloads to save
-     * @return list of saved records with generated IDs
-     */
     @Transactional
-    public synchronized List<DataRecord> saveBatch(String source, String type, List<Map<String, Object>> payloads) {
+    public List<DataRecord> saveBatch(String source, String type, List<Map<String, Object>> payloads) {
         log.debug("Saving batch of {} records with source: {}, type: {}", payloads.size(), source, type);
         List<DataRecord> records = new ArrayList<>();
         for (Map<String, Object> payload : payloads) {
-            DataRecord record = DataRecord.builder()
-                    .key(String.valueOf(sequence++))
-                    .source(source)
-                    .type(type)
-                    .payload(Map.copyOf(payload))
-                    .timestamp(Instant.now())
-                    .build();
-
-            long position = storage.size();
-            storage.add(record);
-
-            sourceIndex.add(source, position);
-            typeIndex.add(type, position);
-            idIndex.put(record.id(), record);
-
-            eventPublisher.publishEvent(new DataRecordIngestedEvent(this, record));
+            DataRecord record = buildRecord(source, type, payload);
+            addRecord(record);
             records.add(record);
         }
         log.info("Saved batch of {} records with source: {}", records.size(), source);
         return records;
     }
 
-    public synchronized DataRecord findById(String id) {
+    public DataRecord saveRecord(DataRecord record) {
+        addRecord(record);
+        return record;
+    }
+
+    public List<DataRecord> saveRecords(List<DataRecord> recordsToSave) {
+        for (DataRecord record : recordsToSave) {
+            addRecord(record);
+        }
+        return recordsToSave;
+    }
+
+    public DataRecord findById(String id) {
         log.debug("Searching for record with ID: {}", id);
         DataRecord record = idIndex.get(id);
         if (record != null) {
@@ -116,155 +79,103 @@ public class InMemoryStorageService {
         return record;
     }
 
-    public synchronized List<DataRecord> findBySource(String source) {
+    public List<DataRecord> findBySource(String source) {
         log.debug("Finding records by source: {}", source);
-        List<DataRecord> result = getRecordsByIndex(sourceIndex, source);
+        List<DataRecord> result = sourceIndex.getOrDefault(source, new CopyOnWriteArrayList<>());
         log.debug("Found {} records by source: {}", result.size(), source);
-        return result;
+        return List.copyOf(result);
     }
 
-    public synchronized List<DataRecord> findByType(String type) {
+    public List<DataRecord> findByType(String type) {
         log.debug("Finding records by type: {}", type);
-        List<DataRecord> result = getRecordsByIndex(typeIndex, type);
+        List<DataRecord> result = typeIndex.getOrDefault(type, new CopyOnWriteArrayList<>());
         log.debug("Found {} records by type: {}", result.size(), type);
-        return result;
+        return List.copyOf(result);
     }
 
-    public synchronized List<DataRecord> findAllRecords() {
-        log.debug("Retrieving all records, current count: {}", storage.size());
-        List<DataRecord> snapshot = snapshotRecords();
-        log.debug("Retrieved {} records", snapshot.size());
-        return Collections.unmodifiableList(snapshot);
+    public List<DataRecord> findAllRecords() {
+        log.debug("Retrieving all records, current count: {}", records.size());
+        return List.copyOf(records);
     }
 
-    /**
-     * Find all records with pagination support
-     *
-     * @param page zero-indexed page number
-     * @param pageSize number of records per page
-     * @return list of records for the given page
-     */
-    public synchronized List<DataRecord> findAllRecordsPaginated(int page, int pageSize) {
+    public List<DataRecord> findAllRecordsPaginated(int page, int pageSize) {
         log.debug("Retrieving records with pagination: page={}, pageSize={}", page, pageSize);
         validatePagination(page, pageSize);
 
+        List<DataRecord> snapshot = List.copyOf(records);
         int start = page * pageSize;
-        int end = Math.min(start + pageSize, storage.size());
+        int end = Math.min(start + pageSize, snapshot.size());
 
-        if (start >= storage.size()) {
+        if (start >= snapshot.size()) {
             log.debug("Requested page {} is beyond available records", page);
             return Collections.emptyList();
         }
 
-        List<DataRecord> result = new ArrayList<>();
-        for (int i = start; i < end; i++) {
-            result.add(storage.get(i));
-        }
+        List<DataRecord> result = new ArrayList<>(snapshot.subList(start, end));
         log.debug("Retrieved {} records for page {}", result.size(), page);
         return Collections.unmodifiableList(result);
     }
 
-    /**
-     * Find records by source with pagination support
-     *
-     * @param source the source filter
-     * @param page zero-indexed page number
-     * @param pageSize number of records per page
-     * @return list of records matching source for the given page
-     */
-    public synchronized List<DataRecord> findBySourcePaginated(String source, int page, int pageSize) {
+    public List<DataRecord> findBySourcePaginated(String source, int page, int pageSize) {
         log.debug("Finding paginated records by source: {}, page={}, pageSize={}", source, page, pageSize);
         validatePagination(page, pageSize);
 
-        List<DataRecord> allRecords = getRecordsByIndex(sourceIndex, source);
+        List<DataRecord> snapshot = List.copyOf(sourceIndex.getOrDefault(source, new CopyOnWriteArrayList<>()));
         int start = page * pageSize;
-        int end = Math.min(start + pageSize, allRecords.size());
+        int end = Math.min(start + pageSize, snapshot.size());
 
-        if (start >= allRecords.size()) {
+        if (start >= snapshot.size()) {
             log.debug("Requested page {} is beyond available records for source: {}", page, source);
             return Collections.emptyList();
         }
 
-        List<DataRecord> result = new ArrayList<>(allRecords.subList(start, end));
+        List<DataRecord> result = new ArrayList<>(snapshot.subList(start, end));
         log.debug("Retrieved {} records for page {} by source: {}", result.size(), page, source);
         return Collections.unmodifiableList(result);
     }
 
-    /**
-     * Get total record count
-     *
-     * @return total number of records in storage
-     */
-    public synchronized long getTotalRecordCount() {
-        return storage.size();
+    public long getTotalRecordCount() {
+        return records.size();
     }
 
-    /**
-     * Get total record count filtered by source
-     *
-     * @param source the source filter
-     * @return total number of records matching the source
-     */
-    public synchronized long getTotalRecordCountBySource(String source) {
-        return getRecordsByIndex(sourceIndex, source).size();
+    public long getTotalRecordCountBySource(String source) {
+        return sourceIndex.getOrDefault(source, new CopyOnWriteArrayList<>()).size();
     }
 
-    /**
-     * Remove a record by ID with transaction support.
-     *
-     * @param id the record ID to remove
-     */
     @Transactional
-    public synchronized void removeById(String id) {
+    public void removeById(String id) {
         log.debug("Removing record with ID: {}", id);
-        DataRecord record = idIndex.get(id);
+        DataRecord record = idIndex.remove(id);
         if (record == null) {
             log.warn("Attempted to remove non-existent record with ID: {}", id);
             return;
         }
 
-        List<DataRecord> remainingRecords = new ArrayList<>(Math.max(0, storage.size() - 1));
-        boolean removed = false;
-        for (DataRecord current : snapshotRecords()) {
-            if (current.id().equals(id)) {
-                removed = true;
-                continue;
-            }
-            remainingRecords.add(current);
-        }
+        records.remove(record);
+        sourceIndex.computeIfPresent(record.getSource(), (key, list) -> {
+            list.remove(record);
+            return list.isEmpty() ? null : list;
+        });
+        typeIndex.computeIfPresent(record.getType(), (key, list) -> {
+            list.remove(record);
+            return list.isEmpty() ? null : list;
+        });
 
-        if (!removed) {
-            log.warn("Record with ID: {} was missing from storage snapshot during removal", id);
-            return;
-        }
-
-        rebuildState(remainingRecords);
         log.info("Removed record with ID: {}", id);
     }
 
-    /**
-     * Clear all records from storage with transaction support.
-     */
     @Transactional
-    public synchronized void clear() {
+    public void clear() {
         log.info("Clearing all records from storage");
-        storage.clear();
+        records.clear();
         sourceIndex.clear();
         typeIndex.clear();
         idIndex.clear();
         log.info("Cleared all records from storage");
     }
 
-    private List<DataRecord> getRecordsByIndex(SimpleInMemoryIndex index, String key) {
-        List<DataRecord> result = new ArrayList<>();
-        for (Long pos : index.get(key)) {
-            result.add(storage.get(pos.intValue()));
-        }
-        return List.copyOf(result);
-    }
-
-    public synchronized int size() {
-        return storage.size();
+    public int size() {
+        return records.size();
     }
 
     private void validatePagination(int page, int pageSize) {
@@ -276,26 +187,22 @@ public class InMemoryStorageService {
         }
     }
 
-    private List<DataRecord> snapshotRecords() {
-        List<DataRecord> snapshot = new ArrayList<>(storage.size());
-        for (int i = 0; i < storage.size(); i++) {
-            snapshot.add(storage.get(i));
-        }
-        return snapshot;
+    private void addRecord(DataRecord record) {
+        records.add(record);
+        idIndex.put(record.id(), record);
+        sourceIndex.computeIfAbsent(record.getSource(), key -> new CopyOnWriteArrayList<>()).add(record);
+        typeIndex.computeIfAbsent(record.getType(), key -> new CopyOnWriteArrayList<>()).add(record);
+        eventPublisher.publishEvent(new DataRecordIngestedEvent(this, record));
+        log.info("Saved record with ID: {} and key: {}", record.id(), record.getKey());
     }
 
-    private void rebuildState(List<DataRecord> records) {
-        storage.clear();
-        sourceIndex.clear();
-        typeIndex.clear();
-        idIndex.clear();
-
-        for (int i = 0; i < records.size(); i++) {
-            DataRecord current = records.get(i);
-            storage.add(current);
-            sourceIndex.add(current.getSource(), (long) i);
-            typeIndex.add(current.getType(), (long) i);
-            idIndex.put(current.id(), current);
-        }
+    private DataRecord buildRecord(String source, String type, Map<String, Object> payload) {
+        return DataRecord.builder()
+                .key(String.valueOf(sequence++))
+                .source(source)
+                .type(type)
+                .payload(Map.copyOf(payload))
+                .timestamp(Instant.now())
+                .build();
     }
 }

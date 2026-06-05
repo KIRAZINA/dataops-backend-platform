@@ -1,7 +1,7 @@
 package com.dataops.platform.filestorage.service;
 
 import com.dataops.platform.common.model.DataRecord;
-import com.dataops.platform.inmemory.service.InMemoryStorageService;
+import com.dataops.platform.persistence.service.PersistenceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
@@ -10,8 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
@@ -30,11 +30,11 @@ public class FileExportService {
 
     private static final DateTimeFormatter FILE_TS = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
-    private final InMemoryStorageService storage;
+    private final PersistenceService persistenceService;
     private final ObjectMapper objectMapper;
 
-    public FileExportService(InMemoryStorageService storage, ObjectMapper objectMapper) {
-        this.storage = storage;
+    public FileExportService(PersistenceService persistenceService, ObjectMapper objectMapper) {
+        this.persistenceService = persistenceService;
         this.objectMapper = objectMapper;
         this.objectMapper.findAndRegisterModules();
     }
@@ -47,16 +47,17 @@ public class FileExportService {
      * @throws IOException if serialization fails
      */
     @Transactional(readOnly = true)
-    public ResponseEntity<byte[]> exportAsJson() throws IOException {
-        List<DataRecord> records = storage.findAllRecords();
+    public ResponseEntity<StreamingResponseBody> exportAsJson() throws IOException {
+        List<DataRecord> records = persistenceService.findAll().stream()
+                .map(this::toDataRecord)
+                .toList();
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(baos, records);
+        StreamingResponseBody body = outputStream -> objectMapper.writerWithDefaultPrettyPrinter().writeValue(outputStream, records);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=dataops_" + timestamp() + ".json")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(baos.toByteArray());
+                .body(body);
     }
 
     /**
@@ -67,35 +68,48 @@ public class FileExportService {
      * @throws IOException if serialization fails
      */
     @Transactional(readOnly = true)
-    public ResponseEntity<byte[]> exportAsCsv() throws IOException {
-        List<DataRecord> records = storage.findAllRecords();
+    public ResponseEntity<StreamingResponseBody> exportAsCsv() throws IOException {
+        List<DataRecord> records = persistenceService.findAll().stream()
+                .map(this::toDataRecord)
+                .toList();
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (OutputStreamWriter writer = new OutputStreamWriter(baos, StandardCharsets.UTF_8);
-             CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.builder()
-                     .setHeader("ID", "Source", "Type", "Timestamp", "Payload")
-                     .build())) {
+        StreamingResponseBody body = outputStream -> {
+            try (OutputStreamWriter writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8);
+                 CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.builder()
+                         .setHeader("ID", "Source", "Type", "Timestamp", "Payload")
+                         .build())) {
 
-            for (DataRecord r : records) {
-                String payloadJson = objectMapper.writeValueAsString(r.getPayload());
-                csvPrinter.printRecord(
-                        r.id(),
-                        r.getSource(),
-                        r.getType(),
-                        r.getTimestamp().atOffset(ZoneOffset.UTC),
-                        payloadJson
-                );
+                for (DataRecord r : records) {
+                    String payloadJson = objectMapper.writeValueAsString(r.getPayload());
+                    csvPrinter.printRecord(
+                            r.id(),
+                            r.getSource(),
+                            r.getType(),
+                            r.getTimestamp().atOffset(ZoneOffset.UTC),
+                            payloadJson
+                    );
+                }
+                csvPrinter.flush();
             }
-            csvPrinter.flush();
-        }
+        };
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=dataops_" + timestamp() + ".csv")
                 .contentType(MediaType.parseMediaType("text/csv; charset=utf-8"))
-                .body(baos.toByteArray());
+                .body(body);
     }
 
     private String timestamp() {
         return Instant.now().atZone(ZoneOffset.UTC).format(FILE_TS);
+    }
+
+    private DataRecord toDataRecord(com.dataops.platform.persistence.entity.PersistedRecord persisted) {
+        return DataRecord.builder()
+                .key(String.valueOf(persisted.getId()))
+                .source(persisted.getSource())
+                .type(persisted.getType())
+                .payload(persisted.getPayload())
+                .timestamp(persisted.getIngestedAt().atZone(ZoneOffset.systemDefault()).toInstant())
+                .build();
     }
 }

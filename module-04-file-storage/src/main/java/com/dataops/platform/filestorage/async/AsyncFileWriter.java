@@ -10,16 +10,16 @@ import java.util.concurrent.CompletableFuture;
 @Component
 public class AsyncFileWriter {
 
-    @Async
+    @Async("fileWriterTaskExecutor")
     public CompletableFuture<Path> writeAsync(Path path, byte[] data) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                Files.createDirectories(path.getParent());
-                Files.write(path, data);
-                return path;
-            } catch (Exception e) {
-                throw new RuntimeException("Async write failed", e);
-            }
-        });
+        try {
+            Files.createDirectories(path.getParent());
+            Files.write(path, data);
+            return CompletableFuture.completedFuture(path);
+        } catch (Exception e) {
+            CompletableFuture<Path> failed = new CompletableFuture<>();
+            failed.completeExceptionally(new RuntimeException("Async write failed", e));
+            return failed;
+        }
     }
 }

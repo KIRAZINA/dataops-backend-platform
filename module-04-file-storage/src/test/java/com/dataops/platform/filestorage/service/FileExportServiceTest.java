@@ -1,7 +1,7 @@
 package com.dataops.platform.filestorage.service;
 
-import com.dataops.platform.common.model.DataRecord;
-import com.dataops.platform.inmemory.service.InMemoryStorageService;
+import com.dataops.platform.persistence.entity.PersistedRecord;
+import com.dataops.platform.persistence.service.PersistenceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,9 +12,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -35,29 +38,29 @@ import static org.mockito.Mockito.when;
 class FileExportServiceTest {
 
     @Mock
-    private InMemoryStorageService storageService;
+    private PersistenceService persistenceService;
 
     private FileExportService exportService;
 
     @BeforeEach
     void setUp() {
-        exportService = new FileExportService(storageService, new ObjectMapper());
+        exportService = new FileExportService(persistenceService, new ObjectMapper());
     }
 
     @Test
     @DisplayName("Should export records as JSON with proper formatting")
     @SneakyThrows
     void testExportAsJson() {
-        List<DataRecord> records = createTestRecords(3);
-        when(storageService.findAllRecords()).thenReturn(records);
+        List<PersistedRecord> records = createTestRecords(3);
+        when(persistenceService.findAll()).thenReturn(records);
 
-        ResponseEntity<byte[]> response = exportService.exportAsJson();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsJson();
 
         assertNotNull(response.getBody());
         assertTrue(response.getHeaders().getContentDisposition().getFilename().contains("dataops_"));
         assertEquals(MediaType.APPLICATION_JSON, response.getHeaders().getContentType());
 
-        String jsonContent = new String(response.getBody(), StandardCharsets.UTF_8);
+        String jsonContent = toString(response.getBody());
         assertTrue(jsonContent.startsWith("["));
         assertTrue(jsonContent.contains("\"id\""));
         assertTrue(jsonContent.contains("\"source\""));
@@ -68,22 +71,22 @@ class FileExportServiceTest {
     @DisplayName("Should export empty records as JSON")
     @SneakyThrows
     void testExportAsJsonEmpty() {
-        when(storageService.findAllRecords()).thenReturn(new ArrayList<>());
+        when(persistenceService.findAll()).thenReturn(new ArrayList<>());
 
-        ResponseEntity<byte[]> response = exportService.exportAsJson();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsJson();
 
         assertNotNull(response.getBody());
-        assertEquals("[]", new String(response.getBody(), StandardCharsets.UTF_8).replaceAll("\\s+", ""));
+        assertEquals("[]", toString(response.getBody()).replaceAll("\\s+", ""));
     }
 
     @Test
     @DisplayName("Should export records as CSV with proper escaping")
     @SneakyThrows
     void testExportAsCsv() {
-        List<DataRecord> records = createTestRecords(3);
-        when(storageService.findAllRecords()).thenReturn(records);
+        List<PersistedRecord> records = createTestRecords(3);
+        when(persistenceService.findAll()).thenReturn(records);
 
-        ResponseEntity<byte[]> response = exportService.exportAsCsv();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsCsv();
 
         assertNotNull(response.getBody());
         assertTrue(response.getHeaders().getContentDisposition().getFilename().contains("dataops_"));
@@ -91,7 +94,7 @@ class FileExportServiceTest {
         assertEquals("csv", response.getHeaders().getContentType().getSubtype());
         assertEquals(StandardCharsets.UTF_8, response.getHeaders().getContentType().getCharset());
 
-        String csvContent = new String(response.getBody(), StandardCharsets.UTF_8);
+        String csvContent = toString(response.getBody());
         String[] lines = csvContent.split("\n");
 
         assertTrue(lines.length >= 3);
@@ -112,20 +115,20 @@ class FileExportServiceTest {
                 "array", List.of(1, 2, 3)
         );
 
-        DataRecord record = DataRecord.builder()
-                .key("1")
+        PersistedRecord record = PersistedRecord.builder()
+                .id(1L)
                 .source("test-source")
                 .type("TEST")
                 .payload(complexPayload)
-                .timestamp(Instant.now())
+                .ingestedAt(Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime())
                 .build();
 
-        when(storageService.findAllRecords()).thenReturn(List.of(record));
+        when(persistenceService.findAll()).thenReturn(List.of(record));
 
-        ResponseEntity<byte[]> response = exportService.exportAsCsv();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsCsv();
 
         assertNotNull(response.getBody());
-        String csvContent = new String(response.getBody(), StandardCharsets.UTF_8);
+        String csvContent = toString(response.getBody());
         assertTrue(csvContent.contains("test-record"));
         assertTrue(csvContent.contains("nested"));
         assertTrue(csvContent.contains("array"));
@@ -140,20 +143,20 @@ class FileExportServiceTest {
                 "newline_test", "line1\nline2"
         );
 
-        DataRecord record = DataRecord.builder()
-                .key("1")
+        PersistedRecord record = PersistedRecord.builder()
+                .id(1L)
                 .source("test")
                 .type("DATA")
                 .payload(payload)
-                .timestamp(Instant.now())
+                .ingestedAt(Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime())
                 .build();
 
-        when(storageService.findAllRecords()).thenReturn(List.of(record));
+        when(persistenceService.findAll()).thenReturn(List.of(record));
 
-        ResponseEntity<byte[]> response = exportService.exportAsCsv();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsCsv();
 
         assertNotNull(response.getBody());
-        String csvContent = new String(response.getBody(), StandardCharsets.UTF_8);
+        String csvContent = toString(response.getBody());
         assertFalse(csvContent.isEmpty());
         assertTrue(csvContent.contains("test"));
     }
@@ -162,12 +165,12 @@ class FileExportServiceTest {
     @DisplayName("Should export empty records as CSV")
     @SneakyThrows
     void testExportAsCsvEmpty() {
-        when(storageService.findAllRecords()).thenReturn(new ArrayList<>());
+        when(persistenceService.findAll()).thenReturn(new ArrayList<>());
 
-        ResponseEntity<byte[]> response = exportService.exportAsCsv();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsCsv();
 
         assertNotNull(response.getBody());
-        String csvContent = new String(response.getBody(), StandardCharsets.UTF_8);
+        String csvContent = toString(response.getBody());
         String[] lines = csvContent.split("\n");
 
         assertEquals(1, lines.length);
@@ -177,7 +180,7 @@ class FileExportServiceTest {
     @Test
     @DisplayName("Should propagate storage failures during export")
     void testExportJsonFailurePropagation() {
-        when(storageService.findAllRecords())
+        when(persistenceService.findAll())
                 .thenThrow(new IllegalStateException("Storage service error"));
 
         assertThrows(IllegalStateException.class, () -> exportService.exportAsJson());
@@ -188,35 +191,42 @@ class FileExportServiceTest {
     @SneakyThrows
     void testExportAsCsvCharset() {
         Map<String, Object> payload = Map.of("text", "Cafe");
-        DataRecord record = DataRecord.builder()
-                .key("1")
+        PersistedRecord record = PersistedRecord.builder()
+                .id(1L)
                 .source("utf8-test")
                 .type("TEXT")
                 .payload(payload)
-                .timestamp(Instant.now())
+                .ingestedAt(Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime())
                 .build();
 
-        when(storageService.findAllRecords()).thenReturn(List.of(record));
+        when(persistenceService.findAll()).thenReturn(List.of(record));
 
-        ResponseEntity<byte[]> response = exportService.exportAsCsv();
+        ResponseEntity<StreamingResponseBody> response = exportService.exportAsCsv();
 
         assertNotNull(response.getBody());
-        String csvContent = new String(response.getBody(), StandardCharsets.UTF_8);
+        String csvContent = toString(response.getBody());
         assertTrue(csvContent.contains("utf8-test"));
     }
 
-    private List<DataRecord> createTestRecords(int count) {
-        List<DataRecord> records = new ArrayList<>();
+    private List<PersistedRecord> createTestRecords(int count) {
+        List<PersistedRecord> records = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            DataRecord record = DataRecord.builder()
-                    .key(String.valueOf(i))
+            PersistedRecord record = PersistedRecord.builder()
+                    .id((long) i)
                     .source("test-source-" + i)
                     .type("TEST")
                     .payload(Map.of("index", i, "name", "record-" + i))
-                    .timestamp(Instant.now())
+                    .ingestedAt(Instant.now().atZone(ZoneOffset.UTC).toLocalDateTime())
                     .build();
             records.add(record);
         }
         return records;
+    }
+
+    private String toString(StreamingResponseBody body) throws Exception {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            body.writeTo(baos);
+            return baos.toString(StandardCharsets.UTF_8);
+        }
     }
 }
