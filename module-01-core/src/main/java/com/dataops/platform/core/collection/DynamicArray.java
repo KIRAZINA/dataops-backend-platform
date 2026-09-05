@@ -5,7 +5,15 @@ import java.util.NoSuchElementException;
 
 /**
  * Generic dynamic array with amortized O(1) append.
- * Thread-safe for single producer / single consumer.
+ *
+ * <p><b>Not thread-safe.</b> Mutations to {@code elements} and {@code size} fields are performed
+ * without any synchronization or memory-barrier guarantees. Callers that need concurrent access
+ * must synchronize externally (e.g. wrap access in a {@code synchronized} block or use a
+ * purpose-built concurrent structure such as {@link java.util.concurrent.CopyOnWriteArrayList}).
+ *
+ * <p>The earlier class-level comment claimed "Thread-safe for single producer / single consumer"
+ * but no field of this class is {@code volatile} and reads of {@code elements} / {@code size}
+ * are not guarded by any happens-before relationship, so the SPSC claim was misleading.
  */
 public class DynamicArray<T> {
 

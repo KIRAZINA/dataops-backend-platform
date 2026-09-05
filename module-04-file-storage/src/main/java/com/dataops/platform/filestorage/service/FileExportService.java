@@ -1,6 +1,7 @@
 package com.dataops.platform.filestorage.service;
 
 import com.dataops.platform.common.model.DataRecord;
+import com.dataops.platform.persistence.entity.PersistedRecord;
 import com.dataops.platform.persistence.service.PersistenceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.csv.CSVFormat;
@@ -12,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
@@ -101,6 +104,49 @@ public class FileExportService {
 
     private String timestamp() {
         return Instant.now().atZone(ZoneOffset.UTC).format(FILE_TS);
+    }
+
+    /**
+     * Export all records as a custom binary format produced by
+     * {@link BinaryRecordSerializer}.
+     *
+     * <p>The output is a length-prefixed sequence of records. Each record frame
+     * begins with a 4-byte {@code int} record-size, followed by the record body
+     * (see {@link BinaryRecordSerializer} for the body schema). The stream is
+     * fully buffered before responding so the {@code Content-Length} header is
+     * accurate and clients can detect truncation.
+     *
+     * <p>Read-only transaction to ensure a consistent snapshot of data.
+     */
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> exportAsBinary() throws IOException {
+        List<PersistedRecord> records = persistenceService.findAll();
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(1024 + records.size() * 256);
+        try (DataOutputStream out = new DataOutputStream(baos)) {
+            out.writeInt(records.size());
+            for (PersistedRecord p : records) {
+                ByteArrayOutputStream frame = new ByteArrayOutputStream(256);
+                try (DataOutputStream frameOut = new DataOutputStream(frame)) {
+                    BinaryRecordSerializer.writeRecord(
+                            frameOut,
+                            p.getId(),
+                            p.getSource(),
+                            p.getType(),
+                            p.getIngestedAt(),
+                            p.getPayload());
+                }
+                byte[] body = frame.toByteArray();
+                out.writeInt(body.length);
+                out.write(body);
+            }
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=dataops_" + timestamp() + ".bin")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(baos.toByteArray());
     }
 
     private DataRecord toDataRecord(com.dataops.platform.persistence.entity.PersistedRecord persisted) {

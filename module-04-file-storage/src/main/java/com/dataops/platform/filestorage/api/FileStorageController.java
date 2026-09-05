@@ -26,8 +26,7 @@ public class FileStorageController {
     }
 
     @GetMapping("/binary")
-    public ResponseEntity<String> exportBinary() {
-        return ResponseEntity.ok()
-                .body("Binary export (Parquet/Avro) — roadmap for v2.0");
+    public ResponseEntity<byte[]> exportBinary() throws IOException {
+        return exportService.exportAsBinary();
     }
 }

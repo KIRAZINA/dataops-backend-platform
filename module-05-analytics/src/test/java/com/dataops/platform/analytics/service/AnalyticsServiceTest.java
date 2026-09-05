@@ -1,8 +1,6 @@
 package com.dataops.platform.analytics.service;
 
 import com.dataops.platform.common.model.DataRecord;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,13 +22,11 @@ class AnalyticsServiceTest {
 
     private AnalyticsService analyticsService;
     private AggregationEngine aggregationEngine;
-    private MeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         aggregationEngine = new AggregationEngine();
-        meterRegistry = new SimpleMeterRegistry();
-        analyticsService = new AnalyticsService(aggregationEngine, meterRegistry);
+        analyticsService = new AnalyticsService(aggregationEngine);
     }
 
     @Test
@@ -55,16 +51,6 @@ class AnalyticsServiceTest {
 
         assertNotNull(stats);
         assertEquals(0, stats.get("count"));
-    }
-
-    @Test
-    @DisplayName("Should record analytics metrics during stats calculation")
-    void testGetStatsRecordsMetrics() {
-        List<DataRecord> records = createTestRecords(10);
-
-        analyticsService.getStats(records, "test-source");
-
-        assertTrue(meterRegistry.find("analytics.records.processed").counter() != null);
     }
 
     @Test
@@ -169,16 +155,6 @@ class AnalyticsServiceTest {
 
         assertNotNull(sorted);
         assertTrue(sorted.isEmpty());
-    }
-
-    @Test
-    @DisplayName("Should record sort timing metrics")
-    void testGetSortedDataRecordsMetrics() {
-        List<DataRecord> records = createTestRecords(5);
-
-        analyticsService.getSortedData(records, "test-source", "quicksort");
-
-        assertTrue(meterRegistry.find("analytics.sort.time").timer() != null);
     }
 
     @Test

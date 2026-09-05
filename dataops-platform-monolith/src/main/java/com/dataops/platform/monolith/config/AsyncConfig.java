@@ -1,26 +1,17 @@
 package com.dataops.platform.monolith.config;
 
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadPoolExecutor;
-
+/**
+ * Enables {@code @Async} support for future async methods.
+ *
+ * <p>Previously this class also defined a {@code fileWriterTaskExecutor} bean; that
+ * executor has been removed because its only consumer ({@code AsyncFileWriter}) was
+ * dead code with no production callers. Add new executors here when there is a
+ * concrete async method to back them.
+ */
 @Configuration
 @EnableAsync
 public class AsyncConfig {
-
-    @Bean(name = "fileWriterTaskExecutor")
-    public Executor fileWriterTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(8);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("file-writer-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        executor.initialize();
-        return executor;
-    }
 }

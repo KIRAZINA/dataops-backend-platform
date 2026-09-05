@@ -36,25 +36,11 @@ management:
 
 app:
   kafka:
-    enabled: false
+    enabled: ${APP_KAFKA_ENABLED:false}
   api:
     cors:
       allowed-origins: "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"
   security:
-    api-key: ${APP_SECURITY_API_KEY:change-me}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      show-details: always
-
-app:
-  kafka:
-    enabled: false
-  api:
-    cors:
-      allowed-origins: "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"
+    # No insecure default. Must be supplied via API_KEY env var (or app.security.api-key property).
+    # In dev/local/test profiles a missing key is tolerated for local experimentation.
+    api-key: ${API_KEY:}

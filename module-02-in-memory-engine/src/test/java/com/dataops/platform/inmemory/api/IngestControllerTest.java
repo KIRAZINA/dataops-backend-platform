@@ -1,5 +1,6 @@
 package com.dataops.platform.inmemory.api;
 
+import com.dataops.platform.inmemory.service.InMemoryStorageService;
 import com.dataops.platform.inmemory.service.IngestionService;
 import com.dataops.platform.persistence.entity.PersistedRecord;
 import com.dataops.platform.persistence.service.PersistenceService;
@@ -31,11 +32,14 @@ class IngestControllerTest {
     @Mock
     private PersistenceService persistenceService;
 
+    @Mock
+    private InMemoryStorageService storageService;
+
     private IngestController controller;
 
     @BeforeEach
     void setUp() {
-        IngestionService ingestionService = new IngestionService(persistenceService);
+        IngestionService ingestionService = new IngestionService(persistenceService, storageService);
         controller = new IngestController(ingestionService, new ObjectMapper(), new XmlMapper());
     }
 

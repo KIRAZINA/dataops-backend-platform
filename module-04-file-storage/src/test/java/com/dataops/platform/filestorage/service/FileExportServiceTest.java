@@ -178,6 +178,46 @@ class FileExportServiceTest {
     }
 
     @Test
+    @DisplayName("Should export records as binary using BinaryRecordSerializer")
+    @SneakyThrows
+    void testExportAsBinary() {
+        List<PersistedRecord> records = createTestRecords(3);
+        when(persistenceService.findAll()).thenReturn(records);
+
+        ResponseEntity<byte[]> response = exportService.exportAsBinary();
+
+        assertNotNull(response.getBody());
+        assertEquals(MediaType.APPLICATION_OCTET_STREAM, response.getHeaders().getContentType());
+        assertTrue(response.getHeaders().getContentDisposition().getFilename().contains("dataops_"));
+        assertTrue(response.getHeaders().getContentDisposition().getFilename().endsWith(".bin"));
+
+        // Body must be larger than the 4-byte count header for 3 records
+        assertTrue(response.getBody().length > 4,
+                "Binary body must contain at least the record count plus encoded frames");
+
+        // Verify the 4-byte record-count prefix decodes to 3
+        java.io.DataInputStream din = new java.io.DataInputStream(
+                new java.io.ByteArrayInputStream(response.getBody()));
+        assertEquals(3, din.readInt());
+    }
+
+    @Test
+    @DisplayName("Should export empty record set as valid empty binary stream")
+    @SneakyThrows
+    void testExportAsBinaryEmpty() {
+        when(persistenceService.findAll()).thenReturn(new ArrayList<>());
+
+        ResponseEntity<byte[]> response = exportService.exportAsBinary();
+
+        assertNotNull(response.getBody());
+        // 4-byte count header with value 0
+        assertEquals(4, response.getBody().length);
+        java.io.ByteArrayInputStream in = new java.io.ByteArrayInputStream(response.getBody());
+        java.io.DataInputStream din = new java.io.DataInputStream(in);
+        assertEquals(0, din.readInt());
+    }
+
+    @Test
     @DisplayName("Should propagate storage failures during export")
     void testExportJsonFailurePropagation() {
         when(persistenceService.findAll())

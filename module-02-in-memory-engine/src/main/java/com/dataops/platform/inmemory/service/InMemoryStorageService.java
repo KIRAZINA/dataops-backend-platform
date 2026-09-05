@@ -4,11 +4,10 @@ import com.dataops.platform.common.event.DataRecordIngestedEvent;
 import com.dataops.platform.common.model.DataRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,6 +19,23 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * In-memory storage service for managing data records.
  * Uses built-in concurrent collections to provide thread-safe cache semantics.
+ *
+ * <p>Note: methods here are intentionally NOT annotated {@code @Transactional}.
+ * This class holds no transactional resources; the annotation would be misleading.
+ *
+ * <p>Records are added only via {@link #saveRecord(DataRecord)} / {@link #saveRecords(List)},
+ * which take fully-built {@link DataRecord} instances (typically produced upstream by
+ * {@code IngestionService} once JPA has assigned the ID). This service does not generate keys.
+ *
+ * <h3>Cache invalidation</h3>
+ * Both write methods evict the {@code analytics-stats} and {@code analytics-sorted} caches
+ * declared in the monolith's {@code CacheConfig}. Without this, a record ingested via
+ * {@code IngestionService} would not be reflected by
+ * {@code AnalyticsController}/{@code AnalyticsService} until the 3-5 minute TTL elapsed —
+ * reintroducing, in time-boxed form, the data-consistency bug the original engagement
+ * started with. {@code allEntries = true} because a new record with any source affects
+ * both the per-source cache entry AND the global (source=null) entry, and clearing
+ * specific source keys is brittle against future cache-key changes.
  */
 @Slf4j
 @Service
@@ -33,34 +49,13 @@ public class InMemoryStorageService {
 
     private final ApplicationEventPublisher eventPublisher;
 
-    private long sequence = 1L;
-
-    @Transactional
-    public DataRecord save(String source, String type, Map<String, Object> payload) {
-        log.debug("Saving new record with source: {}, type: {}", source, type);
-        DataRecord record = buildRecord(source, type, payload);
-        addRecord(record);
-        return record;
-    }
-
-    @Transactional
-    public List<DataRecord> saveBatch(String source, String type, List<Map<String, Object>> payloads) {
-        log.debug("Saving batch of {} records with source: {}, type: {}", payloads.size(), source, type);
-        List<DataRecord> records = new ArrayList<>();
-        for (Map<String, Object> payload : payloads) {
-            DataRecord record = buildRecord(source, type, payload);
-            addRecord(record);
-            records.add(record);
-        }
-        log.info("Saved batch of {} records with source: {}", records.size(), source);
-        return records;
-    }
-
+    @CacheEvict(cacheNames = {"analytics-stats", "analytics-sorted"}, allEntries = true)
     public DataRecord saveRecord(DataRecord record) {
         addRecord(record);
         return record;
     }
 
+    @CacheEvict(cacheNames = {"analytics-stats", "analytics-sorted"}, allEntries = true)
     public List<DataRecord> saveRecords(List<DataRecord> recordsToSave) {
         for (DataRecord record : recordsToSave) {
             addRecord(record);
@@ -142,7 +137,6 @@ public class InMemoryStorageService {
         return sourceIndex.getOrDefault(source, new CopyOnWriteArrayList<>()).size();
     }
 
-    @Transactional
     public void removeById(String id) {
         log.debug("Removing record with ID: {}", id);
         DataRecord record = idIndex.remove(id);
@@ -164,7 +158,6 @@ public class InMemoryStorageService {
         log.info("Removed record with ID: {}", id);
     }
 
-    @Transactional
     public void clear() {
         log.info("Clearing all records from storage");
         records.clear();
@@ -194,15 +187,5 @@ public class InMemoryStorageService {
         typeIndex.computeIfAbsent(record.getType(), key -> new CopyOnWriteArrayList<>()).add(record);
         eventPublisher.publishEvent(new DataRecordIngestedEvent(this, record));
         log.info("Saved record with ID: {} and key: {}", record.id(), record.getKey());
-    }
-
-    private DataRecord buildRecord(String source, String type, Map<String, Object> payload) {
-        return DataRecord.builder()
-                .key(String.valueOf(sequence++))
-                .source(source)
-                .type(type)
-                .payload(Map.copyOf(payload))
-                .timestamp(Instant.now())
-                .build();
     }
 }

@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -20,6 +19,7 @@ import java.util.Map;
 public class IngestionService {
 
     private final PersistenceService persistenceService;
+    private final InMemoryStorageService storageService;
 
     public DataRecord ingest(String source, String type, Map<String, Object> payload) {
         PersistedRecord persisted;
@@ -30,7 +30,9 @@ public class IngestionService {
             throw new IllegalStateException("Failed to persist record to database", e);
         }
 
-        return toDataRecord(persisted, payload);
+        DataRecord record = toDataRecord(persisted, payload);
+        saveToInMemoryStore(record);
+        return record;
     }
 
     public List<DataRecord> ingestBatch(String source, String type, List<Map<String, Object>> payloads) {
@@ -44,10 +46,21 @@ public class IngestionService {
 
         List<DataRecord> records = new ArrayList<>(persistedRecords.size());
         for (int i = 0; i < persistedRecords.size(); i++) {
-            records.add(toDataRecord(persistedRecords.get(i), payloads.get(i)));
+            DataRecord record = toDataRecord(persistedRecords.get(i), payloads.get(i));
+            saveToInMemoryStore(record);
+            records.add(record);
         }
 
         return List.copyOf(records);
+    }
+
+    private void saveToInMemoryStore(DataRecord record) {
+        try {
+            storageService.saveRecord(record);
+        } catch (Exception e) {
+            log.warn("In-memory store save failed for record id={} (record already persisted to DB): {}",
+                    record.id(), e.getMessage());
+        }
     }
 
     private DataRecord toDataRecord(PersistedRecord persisted, Map<String, Object> payload) {

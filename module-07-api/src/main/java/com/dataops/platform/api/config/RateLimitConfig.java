@@ -23,7 +23,7 @@ public class RateLimitConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/**");
     }
 
-    private static class RateLimitInterceptor implements HandlerInterceptor {
+    static class RateLimitInterceptor implements HandlerInterceptor {
 
         private final com.github.benmanes.caffeine.cache.Cache<String, AtomicInteger> rateLimitCache =
                 Caffeine.newBuilder()

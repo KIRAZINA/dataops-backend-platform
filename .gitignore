@@ -31,6 +31,7 @@ pom.xml.next
 # Logs
 logs/
 *.log
+monolith.*.log
 
 # Local databases and runtime state
 data/
