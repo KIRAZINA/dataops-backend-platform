@@ -146,6 +146,49 @@ dataops-backend-platform
 └── dataops-platform-monolith
 ```
 
+## Records Query Contract (`GET /api/v1/records`)
+
+Paginated, filterable browse of the persisted record set. Backed by
+`JpaRecordRepository.findAll(Specification, Pageable)` — skip/limit and
+filter predicates are all pushed down to SQL.
+
+| Query param | Type | Required | Default | Notes |
+|-------------|------|----------|---------|-------|
+| `source`    | string | no  | —    | Exact match. Max 255 chars. |
+| `type`      | string | no  | —    | Exact match. Max 50 chars. |
+| `from`      | ISO-8601 instant | no | — | Inclusive lower bound on `ingestedAt`. Accepts any offset (`Z`, `+02:00`, etc.); normalised to UTC at the persistence boundary. |
+| `to`        | ISO-8601 instant | no | — | Inclusive upper bound on `ingestedAt`. |
+| `sortBy`    | string | no  | `ingestedAt` | One of `ingestedAt`, `id`. Anything else → 400. |
+| `sortDir`   | string | no  | `desc` | One of `asc`, `desc`. Anything else → 400. |
+| `page`      | int    | no  | `0`   | Zero-indexed. Negative → 400. |
+| `pageSize`  | int    | no  | `20`  | 1..500. Out of range → 400. |
+
+**Deterministic paging.** `id` is always appended as a secondary sort in the
+same direction as the primary. Without it, two records sharing an
+`ingestedAt` timestamp could shuffle between pages; ingestion timestamps are
+at sub-millisecond density, so collisions are not hypothetical.
+
+**Empty result is 200, not 404.** A filter that matches zero records returns
+`200` with `content: []` and `total_elements: 0`. The `total_elements` field
+reflects the *filtered* count, never the whole table.
+
+**Errors.** All 4xx responses share the envelope produced by
+`GlobalExceptionHandler`:
+
+```json
+{
+  "timestamp": "2026-09-06T21:08:40.7906647Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Invalid sortBy 'bogus'. Allowed values: [ingestedAt, id]"
+}
+```
+
+Validation failures (`@Max`, `@Min`, `@Size`, unknown `sortBy`/`sortDir`,
+`from > to`, malformed `Instant`) all produce this envelope via
+`ConstraintViolationException` / `IllegalArgumentException` /
+`MethodArgumentTypeMismatchException` handlers.
+
 ## Notes
 
 - **Kafka** is disabled by default. When `app.kafka.enabled=false` (the default), a `NoOpKafkaProducer` bean is loaded and `publish()` calls are logged but produce no broker traffic — proven by `NoOpKafkaProducerIT`. Set `APP_KAFKA_ENABLED=true` (or `app.kafka.enabled: true`) to switch to the real `KafkaDataProducer`, which sends ingested records to the `dataops-raw-ingest` topic. An actual broker must be reachable for publishes to succeed; the end-to-end path is exercised by `KafkaEndToEndIT` (Testcontainers-backed, gated by `-DrunDockerIT=true`).

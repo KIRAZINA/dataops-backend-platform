@@ -1,5 +1,7 @@
 package com.dataops.platform.inmemory.api;
 
+import com.dataops.platform.common.exception.RecordValidationException;
+import com.dataops.platform.common.exception.ValidationIssue;
 import com.dataops.platform.common.model.DataRecord;
 import com.dataops.platform.inmemory.service.IngestionService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -120,6 +122,20 @@ public class IngestController {
         }
     }
 
+    /**
+     * Removes a leading UTF-8 BOM ({@code U+FEFF}) if present. Otherwise returns
+     * the input unchanged. Returns {@code null} if the input is {@code null}.
+     */
+    public static String stripUtf8Bom(String input) {
+        if (input == null || input.isEmpty()) {
+            return input;
+        }
+        if (input.charAt(0) == '\uFEFF') {
+            return input.substring(1);
+        }
+        return input;
+    }
+
     private Map<String, Object> parseXmlContent(String xml) {
         try {
             return xmlMapper.readValue(xml, new TypeReference<>() {});
@@ -129,26 +145,87 @@ public class IngestController {
     }
 
     private List<Map<String, Object>> parseCsvContentMultipleRows(String csv) {
-        try (CSVParser parser = CSVParser.parse(csv, CSVFormat.DEFAULT.withFirstRecordAsHeader())) {
-            var csvRecords = parser.getRecords();
-            if (csvRecords.isEmpty()) {
+        String normalized = stripUtf8Bom(csv);
+        List<ValidationIssue> issues = new ArrayList<>();
+        List<Map<String, Object>> payloads = new ArrayList<>();
+
+        try (CSVParser parser = CSVParser.parse(normalized,
+                CSVFormat.DEFAULT.withFirstRecordAsHeader())) {
+
+            // Duplicate header detection: parse the header line directly so we can
+            // catch repeated names before the per-row loop runs.
+            String[] headers = parser.getHeaderNames().toArray(new String[0]);
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (String h : headers) {
+                if (!seen.add(h)) {
+                    issues.add(ValidationIssue.of("csv.header",
+                            "duplicate CSV header: '" + h + "'"));
+                }
+            }
+            if (!issues.isEmpty()) {
+                throw new RecordValidationException(issues, 0);
+            }
+
+            List<org.apache.commons.csv.CSVRecord> records = parser.getRecords();
+            if (records.isEmpty()) {
                 throw new IllegalArgumentException("CSV has no data rows");
             }
 
-            List<Map<String, Object>> payloads = new ArrayList<>();
-            var headerMap = parser.getHeaderMap();
-
-            for (var record : csvRecords) {
+            int expectedColumns = parser.getHeaderMap().size();
+            int rowNumber = 1;
+            int recordIdx = 0;
+            for (var record : records) {
+                rowNumber++;
+                // Detect ragged rows BEFORE accessing cells — accessing a header
+                // that doesn't exist in a short row throws IllegalArgumentException
+                // inside Apache Commons CSV, which we don't want to mistake for a
+                // parse failure.
+                if (record.size() != expectedColumns) {
+                    issues.add(ValidationIssue.of(rowNumber, "csv.row",
+                            "expected " + expectedColumns + " columns, got " + record.size()));
+                    recordIdx++;
+                    continue;
+                }
                 Map<String, Object> map = new LinkedHashMap<>();
-                headerMap.forEach((header, position) -> {
-                    String value = record.get(header);
-                    map.put(header, value != null ? value.trim() : "");
-                });
+                for (String header : headers) {
+                    String raw = record.isMapped(header) ? record.get(header) : null;
+                    Object value;
+                    // Empty field semantics: empty string -> null. Per the
+                    // documented contract, the parser is responsible for this
+                    // distinction; the normaliser never sees the empty string.
+                    if (raw == null || raw.isEmpty()) {
+                        value = null;
+                    } else {
+                        value = coerceScalar(raw);
+                    }
+                    map.put(header, value);
+                }
                 payloads.add(map);
+                recordIdx++;
             }
-            return payloads;
+        } catch (RecordValidationException e) {
+            throw e;
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to parse CSV payload", e);
+        }
+
+        if (!issues.isEmpty()) {
+            throw new RecordValidationException(issues, 0);
+        }
+        return payloads;
+    }
+
+    /**
+     * Numeric coercion for CSV cell values. Strings that parse as integers
+     * become {@link Long}; everything else stays a {@link String}. This is a
+     * parsing concern (the consumer expects typed numbers, not stringified
+     * ones) so it lives here rather than in the normalisation layer.
+     */
+    private static Object coerceScalar(String value) {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ignored) {
+            return value;
         }
     }
 }

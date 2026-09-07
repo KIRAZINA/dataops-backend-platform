@@ -7,6 +7,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +53,22 @@ public class PersistenceService {
     @Transactional(readOnly = true)
     public Page<PersistedRecord> findAllPaged(Pageable pageable) {
         return jpaRepo.findAll(pageable);
+    }
+
+    /**
+     * Paged, filtered lookup driven by a JPA {@link Specification}. All filters
+     * (source, type, from, to) are conditional inside the Specification builder:
+     * omitted filters contribute no predicate. This is the entry point for the
+     * {@code GET /api/v1/records} query API.
+     *
+     * <p>The supplied {@link Pageable} already carries sort order. Callers are
+     * expected to append a stable tiebreaker to the sort themselves
+     * (e.g. {@code Sort.by(primary).and(Sort.by("id"))}) so that pages remain
+     * deterministic when timestamps collide.
+     */
+    @Transactional(readOnly = true)
+    public Page<PersistedRecord> findRecords(Specification<PersistedRecord> spec, Pageable pageable) {
+        return jpaRepo.findAll(spec, pageable);
     }
 
     @Transactional(readOnly = true)

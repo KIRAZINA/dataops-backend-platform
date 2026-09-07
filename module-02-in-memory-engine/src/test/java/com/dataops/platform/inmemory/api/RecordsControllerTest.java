@@ -6,12 +6,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 
 import java.time.Instant;
@@ -23,6 +26,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -57,6 +61,8 @@ class RecordsControllerTest {
     private Page<PersistedRecord> paged(List<PersistedRecord> content, Pageable pageable, long total) {
         return new PageImpl<>(content, pageable, total);
     }
+
+    // ---------- /{id} ----------
 
     @Test
     @DisplayName("getRecordById should use indexed findById, not findAll")
@@ -95,30 +101,31 @@ class RecordsControllerTest {
         verify(persistenceService, never()).findAllPaged(any(Pageable.class));
     }
 
+    // ---------- getAllRecords: paged query path ----------
+
     @Test
-    @DisplayName("getAllRecords uses the paged repository query, never findAll (O(n) regression guard)")
-    void getAllRecordsUsesPagedQuery() {
-        List<PersistedRecord> pageContent = List.of(record(1), record(2), record(3));
+    @DisplayName("getAllRecords uses PersistenceService.findRecords(spec, pageable) - not findAll")
+    void getAllRecordsUsesFindRecords() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(persistenceService.findAllPaged(pageable))
-                .thenReturn(paged(pageContent, pageable, 50));
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
+                .thenReturn(paged(List.of(record(1), record(2), record(3)), pageable, 50));
 
-        controller.getAllRecords(0, 20);
+        controller.getAllRecords(null, null, null, null, "ingestedAt", "desc", 0, 20);
 
-        verify(persistenceService).findAllPaged(pageable);
+        verify(persistenceService).findRecords(any(Specification.class), any(Pageable.class));
         verify(persistenceService, never()).findAll();
+        verify(persistenceService, never()).findAllPaged(any(Pageable.class));
         verify(persistenceService, never()).count();
     }
 
     @Test
     @DisplayName("getAllRecords returns correct page contents and totalElements from Page")
     void getAllRecordsCorrectContents() {
-        List<PersistedRecord> pageContent = List.of(record(1), record(2), record(3));
         Pageable pageable = PageRequest.of(0, 20);
-        when(persistenceService.findAllPaged(pageable))
-                .thenReturn(paged(pageContent, pageable, 50));
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
+                .thenReturn(paged(List.of(record(1), record(2), record(3)), pageable, 50));
 
-        var response = controller.getAllRecords(0, 20);
+        var response = controller.getAllRecords(null, null, null, null, "ingestedAt", "desc", 0, 20);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(3, response.getBody().getContent().size());
@@ -130,13 +137,12 @@ class RecordsControllerTest {
     @Test
     @DisplayName("getAllRecords honors custom page size and page number")
     void getAllRecordsCustomPage() {
-        // 30 records, page=1, size=5 should return records 6-10
-        List<PersistedRecord> pageContent = List.of(record(6), record(7), record(8), record(9), record(10));
         Pageable pageable = PageRequest.of(1, 5);
-        when(persistenceService.findAllPaged(pageable))
-                .thenReturn(paged(pageContent, pageable, 30));
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
+                .thenReturn(paged(List.of(record(6), record(7), record(8), record(9), record(10)),
+                        pageable, 30));
 
-        var response = controller.getAllRecords(1, 5);
+        var response = controller.getAllRecords(null, null, null, null, "ingestedAt", "desc", 1, 5);
 
         assertEquals(5, response.getBody().getContent().size());
         assertEquals(30L, response.getBody().getTotalElements());
@@ -147,10 +153,10 @@ class RecordsControllerTest {
     @DisplayName("getAllRecords with out-of-range page returns empty content, not an error")
     void getAllRecordsOutOfRange() {
         Pageable pageable = PageRequest.of(10, 20);
-        when(persistenceService.findAllPaged(pageable))
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
                 .thenReturn(paged(List.of(), pageable, 1));
 
-        var response = controller.getAllRecords(10, 20);
+        var response = controller.getAllRecords(null, null, null, null, "ingestedAt", "desc", 10, 20);
 
         assertEquals(200, response.getStatusCode().value(),
                 "Out-of-range page should return 200 with empty content, not 4xx");
@@ -158,35 +164,121 @@ class RecordsControllerTest {
         assertEquals(1L, response.getBody().getTotalElements());
     }
 
+    // ---------- B4: deterministic tiebreaker (secondary sort = id, same direction) ----------
+
     @Test
-    @DisplayName("getAllRecords with pageSize=1000 does not throw when invoked directly — @Max enforcement happens at the request-mapping layer (via Spring's MethodValidationPostProcessor)")
-    void getAllRecordsPageSizeEnforcedAtRequestMappingLayer() {
-        // Note: the @Max(500) constraint is enforced by Spring's MethodValidationPostProcessor
-        // when the controller is invoked through Spring MVC. Calling the method directly
-        // bypasses that validation, so we cannot test the rejection in this isolated unit test.
-        // The integration test in the monolith covers the full Spring MVC path. Here we just
-        // assert the method accepts the value without crashing — the contract under test is
-        // "no surprise throws for oversized values at the data layer".
-        Pageable pageable = PageRequest.of(0, 1000);
-        when(persistenceService.findAllPaged(pageable))
+    @DisplayName("getAllRecords always appends 'id' as secondary sort in the same direction")
+    void getAllRecordsAppendsIdTiebreaker() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
                 .thenReturn(paged(List.of(record(1)), pageable, 1));
 
-        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> controller.getAllRecords(0, 1000));
+        controller.getAllRecords(null, null, null, null, "ingestedAt", "desc", 0, 20);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(persistenceService).findRecords(any(Specification.class), captor.capture());
+        Sort sort = captor.getValue().getSort();
+
+        List<Sort.Order> orders = sort.toList();
+        assertEquals(2, orders.size(), "primary + tiebreaker");
+        assertEquals("ingestedAt", orders.get(0).getProperty());
+        assertEquals(Sort.Direction.DESC, orders.get(0).getDirection());
+        assertEquals("id", orders.get(1).getProperty(), "tiebreaker must be id");
+        assertEquals(Sort.Direction.DESC, orders.get(1).getDirection(),
+                "tiebreaker must match primary direction");
     }
 
     @Test
-    @DisplayName("getRecordsBySource uses the paged source query, never findBySource + size (O(n) regression guard)")
+    @DisplayName("getAllRecords ascending: tiebreaker is also ascending")
+    void getAllRecordsTiebreakerAsc() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
+                .thenReturn(paged(List.of(record(1)), pageable, 1));
+
+        controller.getAllRecords(null, null, null, null, "ingestedAt", "asc", 0, 20);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(persistenceService).findRecords(any(Specification.class), captor.capture());
+        Sort sort = captor.getValue().getSort();
+        List<Sort.Order> orders = sort.toList();
+        assertEquals(Sort.Direction.ASC, orders.get(1).getDirection());
+    }
+
+    // ---------- B2: contract guard on sortBy / sortDir ----------
+
+    @Test
+    @DisplayName("getAllRecords rejects unknown sortBy with IllegalArgumentException (-> 400)")
+    void getAllRecordsRejectsUnknownSortBy() {
+        assertThrows(IllegalArgumentException.class, () ->
+                controller.getAllRecords(null, null, null, null, "source", "asc", 0, 20));
+        verify(persistenceService, never()).findRecords(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("getAllRecords rejects sortBy=bogus with IllegalArgumentException (-> 400)")
+    void getAllRecordsRejectsBogusSortBy() {
+        assertThrows(IllegalArgumentException.class, () ->
+                controller.getAllRecords(null, null, null, null, "bogus", "asc", 0, 20));
+    }
+
+    @Test
+    @DisplayName("getAllRecords rejects unknown sortDir with IllegalArgumentException (-> 400)")
+    void getAllRecordsRejectsUnknownSortDir() {
+        assertThrows(IllegalArgumentException.class, () ->
+                controller.getAllRecords(null, null, null, null, "ingestedAt", "sideways", 0, 20));
+    }
+
+    // ---------- B3 / B5: range validation ----------
+
+    @Test
+    @DisplayName("getAllRecords rejects from > to with IllegalArgumentException (-> 400)")
+    void getAllRecordsRejectsInvertedRange() {
+        Instant from = Instant.parse("2026-09-01T13:00:00Z");
+        Instant to = Instant.parse("2026-09-01T12:00:00Z");
+        assertThrows(IllegalArgumentException.class, () ->
+                controller.getAllRecords(null, null, from, to, "ingestedAt", "desc", 0, 20));
+    }
+
+    @Test
+    @DisplayName("getAllRecords accepts from == to (inclusive boundary is valid)")
+    void getAllRecordsAcceptsEqualBounds() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
+                .thenReturn(paged(List.of(record(1)), pageable, 1));
+
+        Instant same = Instant.parse("2026-09-01T12:00:00Z");
+        var response = controller.getAllRecords(null, null, same, same, "ingestedAt", "desc", 0, 20);
+
+        assertEquals(200, response.getStatusCode().value());
+    }
+
+    // ---------- omitted parameters (no predicates) ----------
+
+    @Test
+    @DisplayName("getAllRecords with no filters builds a no-op specification (returns everything)")
+    void getAllRecordsNoFiltersPassesEmptySpec() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(persistenceService.findRecords(any(Specification.class), any(Pageable.class)))
+                .thenReturn(paged(List.of(record(1), record(2)), pageable, 2));
+
+        var response = controller.getAllRecords(null, null, null, null, "ingestedAt", "desc", 0, 20);
+
+        assertEquals(2, response.getBody().getContent().size());
+        verify(persistenceService).findRecords(any(Specification.class), any(Pageable.class));
+    }
+
+    // ---------- getRecordsBySource (legacy endpoint) ----------
+
+    @Test
+    @DisplayName("getRecordsBySource uses the paged source query, never findBySource + size")
     void getRecordsBySourceUsesPagedQuery() {
-        List<PersistedRecord> pageContent = List.of(record(1), record(2), record(3));
         Pageable pageable = PageRequest.of(0, 20);
         when(persistenceService.findBySourcePaged("api", pageable))
-                .thenReturn(paged(pageContent, pageable, 3));
+                .thenReturn(paged(List.of(record(1), record(2), record(3)), pageable, 3));
 
         controller.getRecordsBySource("api", 0, 20);
 
         verify(persistenceService).findBySourcePaged("api", pageable);
-        // Old implementation called findBySource twice (once for content, once for size) plus count.
-        // Any call to those should be absent in the new paged path.
         verify(persistenceService, never()).findBySource(any(String.class));
         verify(persistenceService, never()).count();
     }
@@ -194,10 +286,9 @@ class RecordsControllerTest {
     @Test
     @DisplayName("getRecordsBySource returns only matching source records")
     void getRecordsBySourceFilters() {
-        List<PersistedRecord> matching = List.of(record(1), record(2), record(3));
         Pageable pageable = PageRequest.of(0, 20);
         when(persistenceService.findBySourcePaged("api", pageable))
-                .thenReturn(paged(matching, pageable, 3));
+                .thenReturn(paged(List.of(record(1), record(2), record(3)), pageable, 3));
 
         var response = controller.getRecordsBySource("api", 0, 20);
 
@@ -207,7 +298,7 @@ class RecordsControllerTest {
     }
 
     @Test
-    @DisplayName("getRecordsBySource returns empty list when source has zero matches, not an error")
+    @DisplayName("getRecordsBySource returns empty list when source has zero matches")
     void getRecordsBySourceEmpty() {
         Pageable pageable = PageRequest.of(0, 20);
         when(persistenceService.findBySourcePaged("missing-source", pageable))
@@ -224,7 +315,10 @@ class RecordsControllerTest {
     @Test
     @DisplayName("getRecordsBySource paginates correctly across multiple pages")
     void getRecordsBySourcePaginates() {
-        // page 0 (records 1-10), page 1 (records 11-20), page 2 (records 21-25)
+        Pageable p0 = PageRequest.of(0, 10);
+        Pageable p1 = PageRequest.of(1, 10);
+        Pageable p2 = PageRequest.of(2, 10);
+
         List<PersistedRecord> page0 = new ArrayList<>();
         for (int i = 1; i <= 10; i++) page0.add(record(i));
         List<PersistedRecord> page1 = new ArrayList<>();
@@ -232,20 +326,17 @@ class RecordsControllerTest {
         List<PersistedRecord> page2 = new ArrayList<>();
         for (int i = 21; i <= 25; i++) page2.add(record(i));
 
-        when(persistenceService.findBySourcePaged("api", PageRequest.of(0, 10)))
-                .thenReturn(paged(page0, PageRequest.of(0, 10), 25));
-        when(persistenceService.findBySourcePaged("api", PageRequest.of(1, 10)))
-                .thenReturn(paged(page1, PageRequest.of(1, 10), 25));
-        when(persistenceService.findBySourcePaged("api", PageRequest.of(2, 10)))
-                .thenReturn(paged(page2, PageRequest.of(2, 10), 25));
+        when(persistenceService.findBySourcePaged("api", p0)).thenReturn(paged(page0, p0, 25));
+        when(persistenceService.findBySourcePaged("api", p1)).thenReturn(paged(page1, p1, 25));
+        when(persistenceService.findBySourcePaged("api", p2)).thenReturn(paged(page2, p2, 25));
 
-        var p1 = controller.getRecordsBySource("api", 0, 10);
-        var p2 = controller.getRecordsBySource("api", 1, 10);
-        var p3 = controller.getRecordsBySource("api", 2, 10);
+        var r1 = controller.getRecordsBySource("api", 0, 10);
+        var r2 = controller.getRecordsBySource("api", 1, 10);
+        var r3 = controller.getRecordsBySource("api", 2, 10);
 
-        assertEquals(10, p1.getBody().getContent().size());
-        assertEquals(10, p2.getBody().getContent().size());
-        assertEquals(5, p3.getBody().getContent().size());
-        assertEquals(25L, p1.getBody().getTotalElements());
+        assertEquals(10, r1.getBody().getContent().size());
+        assertEquals(10, r2.getBody().getContent().size());
+        assertEquals(5, r3.getBody().getContent().size());
+        assertEquals(25L, r1.getBody().getTotalElements());
     }
 }

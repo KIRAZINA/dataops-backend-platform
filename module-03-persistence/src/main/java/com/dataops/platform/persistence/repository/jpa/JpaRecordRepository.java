@@ -4,13 +4,16 @@ import com.dataops.platform.persistence.entity.PersistedRecord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
 @Repository
-public interface JpaRecordRepository extends JpaRepository<PersistedRecord, Long> {
+public interface JpaRecordRepository
+        extends JpaRepository<PersistedRecord, Long>,
+                JpaSpecificationExecutor<PersistedRecord> {
 
     List<PersistedRecord> findBySourceOrderByIngestedAtDesc(String source);
 
