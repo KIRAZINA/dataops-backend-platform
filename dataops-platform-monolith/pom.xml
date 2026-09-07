@@ -22,6 +22,11 @@
     <dependencies>
         <dependency>
             <groupId>com.dataops.platform</groupId>
+            <artifactId>module-00-common-models</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.dataops.platform</groupId>
             <artifactId>module-01-core</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>

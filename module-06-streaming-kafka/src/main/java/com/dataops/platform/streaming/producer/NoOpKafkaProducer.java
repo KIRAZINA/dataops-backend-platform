@@ -14,4 +14,10 @@ public class NoOpKafkaProducer implements KafkaProducer {
     public void publish(String topic, DataRecord record) {
         log.info("Kafka disabled -> skipping publish: topic={}, key={}", topic, record.getKey());
     }
+
+    @Override
+    public void publish(String topic, String rawJsonPayload) {
+        log.info("Kafka disabled -> skipping publish: topic={}, payloadBytes={}",
+                topic, rawJsonPayload == null ? 0 : rawJsonPayload.length());
+    }
 }

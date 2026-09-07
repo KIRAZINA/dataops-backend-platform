@@ -1,6 +1,7 @@
 package com.dataops.platform.streaming.producer;
 
 import com.dataops.platform.common.model.DataRecord;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -47,7 +48,13 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class KafkaDataProducer implements KafkaProducer {
 
-    private final KafkaTemplate<String, DataRecord> kafkaTemplate;
+    private KafkaTemplate<String, DataRecord> kafkaTemplate;
+
+    /**
+     * Required by CGLIB proxying in Spring contexts.
+     */
+    protected KafkaDataProducer() {
+    }
 
     /**
      * Optional — present in production with the monolith's Prometheus wiring,
@@ -56,6 +63,9 @@ public class KafkaDataProducer implements KafkaProducer {
      */
     @Autowired(required = false)
     private MeterRegistry meterRegistry;
+
+    @Autowired(required = false)
+    private ObjectMapper objectMapper;
 
     public KafkaDataProducer(KafkaTemplate<String, DataRecord> kafkaTemplate) {
         this.kafkaTemplate = kafkaTemplate;
@@ -93,6 +103,30 @@ public class KafkaDataProducer implements KafkaProducer {
             log.error("Synchronous Kafka publish failure: topic={}, key={}, error={}",
                     topic, record.getKey(), e.getMessage(), e);
             recordOutcome("kafka.records.failed", topic, "sync_error");
+        }
+    }
+
+    /**
+     * Outbox relay path: the payload is the JSON form of a {@link DataRecord}
+     * (written by {@code IngestionService}). Deserialized back and delegated to
+     * {@link #publish(String, DataRecord)} so the single
+     * {@code KafkaTemplate<String, DataRecord>} stays the only wire type.
+     * Deserialization failures propagate so the relay can retry / dead-letter.
+     */
+    @Override
+    public void publish(String topic, String rawJsonPayload) {
+        if (rawJsonPayload == null || rawJsonPayload.isBlank()) {
+            throw new IllegalArgumentException("Outbox payload must not be blank");
+        }
+        try {
+            ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+            DataRecord record = mapper.readValue(rawJsonPayload, DataRecord.class);
+            publish(topic, record);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.error("Outbox payload is not valid DataRecord JSON: topic={}, error={}",
+                    topic, e.getMessage(), e);
+            recordOutcome("kafka.records.failed", topic, "bad_payload");
+            throw new IllegalArgumentException("Outbox payload is not valid DataRecord JSON", e);
         }
     }
 
