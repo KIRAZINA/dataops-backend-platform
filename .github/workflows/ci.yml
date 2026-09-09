@@ -31,8 +31,10 @@ jobs:
           docker --version
           docker info | head -20
 
-      # Fast unit-test pass — covers every module's plain unit tests and
-      # the NoOpKafkaProducerIT (which does not need Docker).
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw
+
+      # Fast unit-test pass — covers every module's plain unit tests.
       - name: Run unit tests
         working-directory: .
         run: ./mvnw -B test
@@ -43,17 +45,18 @@ jobs:
         run: ./mvnw -B -pl dataops-platform-monolith -am package -DskipTests
 
       # Run Testcontainers-backed integration tests. These spin up real
-      # Postgres and Kafka containers. They require Docker, which the
+      # Postgres containers. They require Docker, which the
       # ubuntu-latest runner provides out of the box.
       - name: Run Testcontainers-backed integration tests
         working-directory: .
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'true'
         run: |
-          ./mvnw -B -pl module-06-streaming-kafka,dataops-platform-monolith \
-            -Dtest='KafkaEndToEndIT,*IntegrationTest,*IT' \
+          ./mvnw -B -pl dataops-platform-monolith -am \
+            -Dtest='*IntegrationTest,*IT' \
             -DrunDockerIT=true \
             -DfailIfNoTests=false \
+            -Dsurefire.failIfNoSpecifiedTests=false \
             test
 
       - name: Upload fat JAR

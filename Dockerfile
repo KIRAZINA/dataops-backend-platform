@@ -12,6 +12,11 @@ WORKDIR /app
 
 ENV APP_KAFKA_ENABLED=false
 ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/dataops
+ENV SPRING_DATASOURCE_DRIVER=org.h2.Driver
+ENV SPRING_DATASOURCE_USERNAME=sa
+ENV SPRING_DATASOURCE_PASSWORD=
+ENV SPRING_JPA_DIALECT=org.hibernate.dialect.H2Dialect
+ENV API_KEY=docker-default-key
 
 RUN mkdir -p /app/data
 
