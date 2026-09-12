@@ -96,6 +96,14 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
         </dependency>
+        <!-- Flyway V10 split database support out of flyway-core.
+             PostgreSQL support lives in a separate module, which must be present
+             on the classpath or Flyway cannot drive a PostgreSQL database
+             (throws "Unsupported Database: ..."). -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

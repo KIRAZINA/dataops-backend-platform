@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS persisted_record (
     source VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,
     ingested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    payload CLOB NOT NULL,
+    payload TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

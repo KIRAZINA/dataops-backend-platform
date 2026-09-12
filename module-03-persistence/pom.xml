@@ -29,6 +29,13 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
         </dependency>
+        <!-- Flyway V10 split database support out of flyway-core. This module
+             targets PostgreSQL as a runtime (see org.postgresql:postgresql above),
+             so the PostgreSQL database plugin is required for Flyway to run. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

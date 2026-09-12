@@ -49,7 +49,7 @@ public class PersistedRecord {
 
     @Lob
     @Convert(converter = MapToJsonConverter.class)
-    @Column(columnDefinition = "CLOB NOT NULL", nullable = false)
+    @Column(nullable = false)
     private Map<String, Object> payload;
 
     @Column(name = "created_at", updatable = false)
