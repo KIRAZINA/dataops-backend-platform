@@ -1,7 +1,10 @@
 package com.dataops.platform.monolith;
 
+import com.dataops.platform.inmemory.service.InMemoryStorageService;
+import com.dataops.platform.persistence.repository.jpa.JpaRecordRepository;
 import com.dataops.platform.persistence.service.PersistenceService;
 import com.dataops.platform.monolith.DataOpsMonolithApplication;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -10,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -72,6 +76,27 @@ class MonolithIntegrationTest {
     @Autowired
     PersistenceService persistenceService;
 
+    @Autowired
+    InMemoryStorageService storageService;
+
+    @Autowired
+    JpaRecordRepository recordRepository;
+
+    @Autowired
+    CacheManager cacheManager;
+
+    @BeforeEach
+    void resetState() {
+        recordRepository.deleteAll();
+        storageService.clear();
+        cacheManager.getCacheNames().forEach(cacheName -> {
+            var cache = cacheManager.getCache(cacheName);
+            if (cache != null) {
+                cache.clear();
+            }
+        });
+    }
+
     private HttpHeaders authedHeaders() {
         HttpHeaders h = new HttpHeaders();
         h.setContentType(MediaType.APPLICATION_JSON);
@@ -99,7 +124,7 @@ class MonolithIntegrationTest {
                 "http://localhost:" + port + "/api/v1/records/" + recordId,
                 HttpMethod.GET, get, Map.class);
         assertEquals(200, byId.getStatusCode().value());
-        assertEquals("integration", byId.getBody().get("source"));
+        assertEquals("api", byId.getBody().get("source"));
 
         // 3) Analytics stats must see the record via the in-memory store.
         //    Before Phase 1 Item 1's fix this would return zero counts.
@@ -111,8 +136,8 @@ class MonolithIntegrationTest {
         assertNotNull(statsBody);
         Map<?, ?> content = (Map<?, ?>) ((List<?>) statsBody.get("content")).get(0);
         assertNotNull(content, "Stats content must include the aggregation");
-        Object countObj = content.get("totalRecords");
-        assertNotNull(countObj, "Stats must include a totalRecords field; missing in-memory wiring would produce null/0 here");
+        Object countObj = content.get("count");
+        assertNotNull(countObj, "Stats must include a count field; missing in-memory wiring would produce null/0 here");
         assertEquals(1.0, ((Number) countObj).doubleValue(),
                 "In-memory store must contain the ingested record (Phase 1 Item 1 regression guard)");
 
